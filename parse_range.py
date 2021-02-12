@@ -2,10 +2,9 @@ import win32gui
 import win32com.client
 import win32clipboard
 import pyautogui
-import cv2
+import pickle
 import time
-import os
-import numpy as np
+import os.path
 
 
 CLEAR_RANGE_X = 250
@@ -147,7 +146,7 @@ def copy_values(window):
 
     win32clipboard.OpenClipboard()
     MP2_equity, MP3_equity, CO_equity, DE_equity, SB_equity, BB_equity = parse_data(win32clipboard.GetClipboardData())
-    print(MP2_equity, MP3_equity, CO_equity, DE_equity, SB_equity, BB_equity)
+    #print(MP2_equity, MP3_equity, CO_equity, DE_equity, SB_equity, BB_equity)
     win32clipboard.CloseClipboard()
     return MP2_equity, MP3_equity, CO_equity, DE_equity, SB_equity, BB_equity
 
@@ -156,19 +155,44 @@ def calc_equity_tables(window):
     pass
 
 
-def order_hands_2players(window):
-    for card_a in range(2, 15):
-        for card_b in range(2, 15):
-            for suit in [False, True]:
-                if card_a == card_b and suit:
-                    continue
-                insert_hand(window=window, position='SB', card_a=card_a, card_b=card_b, suited=suit)
-                insert_range(window=window, position='BB', range=50, type='classic')
-                evaluate(window=window, calc_time=2)
-                print(card_a, card_b, suit, end=': ')
-                copy_values(window=window)
-                clear_ranges(window=window)
+def order_hands(window, vs_range=50, vs_players=1):
+    path = "./hands_order_"+str(vs_players)+"p_"+str(vs_range)+"r.pickle"
+    if os.path.exists(path):
+        hands_order_2p = pickle.load(open(path, "rb"))
+    else:
+        hands_order_2p = {}
+    try:
+        for card_a in range(2, 15):
+            for card_b in range(2, 15):
+                for suit in [False, True]:
+                    if card_a == card_b and suit:
+                        continue
+                    if (card_a, card_b, suit) in hands_order_2p.keys():
+                        continue
+                    for i in range(vs_players):
+                        insert_range(window=window, position=RANGE_POSITIONS[len(RANGE_POSITIONS)-2-i], range=vs_range, type='classic')
+                    insert_hand(window=window, position='BB', card_a=card_a, card_b=card_b, suited=suit)
+                    evaluate(window=window, calc_time=5)
+                    print(card_a, card_b, suit, end=': ')
+                    hands_order_2p[(card_a, card_b, suit)] = copy_values(window=window)[5]
+                    print(hands_order_2p[(card_a, card_b, suit)])
+                    clear_ranges(window=window)
+    except Exception as e:
+        print("-I- caught exception exiting gracefully...")
+        print(e)
+        pickle.dump(hands_order_2p, open(path, "wb"))
 
+
+def print_pickle_dict(dic):
+    for key, val in dic.items():
+        print(key, ":", val)
+
+
+def txt_pickle_dict(dic, name):
+    file = open(name+".txt", "w+")
+    for key, val in dic.items():
+        file.write(str(key)+": "+str(val)+"\n")
+    file.close()
 
 
 equilab_window = find_equity_lab_window("Equilab")
@@ -176,7 +200,6 @@ front_ground_window(equilab_window)
 clear_ranges(equilab_window)
 
 
-
-order_hands_2players(window=equilab_window)
+order_hands(window=equilab_window, vs_range=30, vs_players=2)
 
 
