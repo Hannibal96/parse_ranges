@@ -10,8 +10,19 @@ import os.path
 CLEAR_RANGE_X = 250
 CLEAR_RANGE_Y = 380
 
-EVALUATE_X = 1340
-EVALUATE_Y = 385
+
+def locate_eval_button():
+    pass
+
+def locate_copy_button():
+    pass
+
+
+EVALUATE_X = 1220
+EVALUATE_Y = 380
+
+#COPY_X = 1220
+#COPY_Y = 380
 
 RANGE_POSITIONS = ['MP2', 'MP3', 'CO', 'BU', 'SB', 'BB']
 
@@ -74,7 +85,7 @@ def click_position(window, position):
 
 def insert_range(window, position, range, type):
     click_position(window, position)
-    time.sleep(1)
+    time.sleep(0.5)
 
     range_window = find_equity_lab_window(position)
     range_top_x, range_top_y, range_low_x, range_low_y = win32gui.GetWindowRect(range_window)
@@ -90,18 +101,19 @@ def insert_range(window, position, range, type):
             pyautogui.doubleClick(range_top_x + 145, range_top_y + 500)
             pyautogui.press('0')
         else:
-            pyautogui.click(range_top_x + 500, range_top_y + 110 + 18 * int(range / 5))
+            pyautogui.click(range_top_x + 520, range_top_y + 80 + 17.1 * int(range / 5))
     else:
         print("-E- wrong type of ranges")
         exit()
-    time.sleep(1)
+    time.sleep(0.5)
 
     pyautogui.click(range_top_x + 515, range_top_y + 630)
 
 
-def insert_hand(window, position, card_a, card_b, suited):
-    click_position(window, position)
-    time.sleep(1)
+def insert_hand(window, position, card_a, card_b, suited, press_ok=True):
+    if press_ok:
+        click_position(window, position)
+        time.sleep(0.5)
     range_window = find_equity_lab_window(position)
     range_top_x, range_top_y, range_low_x, range_low_y = win32gui.GetWindowRect(range_window)
 
@@ -120,8 +132,10 @@ def insert_hand(window, position, card_a, card_b, suited):
         cor_y += block_dim * (14 - small)
 
     pyautogui.click(range_top_x + cor_x, range_top_y + cor_y)
-    time.sleep(0.2)
-    pyautogui.click(range_top_x + 515, range_top_y + 630)
+    time.sleep(0.01)
+    if press_ok:
+        pyautogui.press('enter')
+        #pyautogui.click(range_top_x + 515, range_top_y + 630)
 
 
 def clear_ranges(window):
@@ -155,37 +169,105 @@ def calc_equity_tables(window):
     pass
 
 
-def order_hands(window, vs_range=50, vs_players=1):
-    path = "./hands_order_"+str(vs_players)+"p_"+str(vs_range)+"r.pickle"
+def order_hands(window, vs_range=50, vs_players=1, iteration=0):
+    path = "./hands_order_"+str(vs_players)+"p_"+str(vs_range)+"r_"+str(iteration)+"i.pickle"
+    previous_val = current_val = 0
     if os.path.exists(path):
         hands_order_2p = pickle.load(open(path, "rb"))
     else:
         hands_order_2p = {}
     try:
         for card_a in range(2, 15):
-            for card_b in range(2, 15):
+            for card_b in range(2, card_a+1):
                 for suit in [False, True]:
                     if card_a == card_b and suit:
                         continue
                     if (card_a, card_b, suit) in hands_order_2p.keys():
                         continue
-                    for i in range(vs_players):
-                        insert_range(window=window, position=RANGE_POSITIONS[len(RANGE_POSITIONS)-2-i], range=vs_range, type='classic')
-                    insert_hand(window=window, position='BB', card_a=card_a, card_b=card_b, suited=suit)
-                    evaluate(window=window, calc_time=5)
-                    print(card_a, card_b, suit, end=': ')
-                    hands_order_2p[(card_a, card_b, suit)] = copy_values(window=window)[5]
-                    print(hands_order_2p[(card_a, card_b, suit)])
-                    clear_ranges(window=window)
+                    while previous_val == current_val:
+                        for i in range(vs_players):
+                            if iteration == 0:
+                                Type = 'classic'
+                            else:
+                                Type = 'adjusted'
+                            insert_range(window=window, position=RANGE_POSITIONS[len(RANGE_POSITIONS)-2-i], range=vs_range, type=Type)
+                        insert_hand(window=window, position='BB', card_a=card_a, card_b=card_b, suited=suit)
+                        evaluate(window=window, calc_time=5)
+                        print(card_a, card_b, suit, end=': ')
+                        current_val = copy_values(window=window)[5]
+                        hands_order_2p[(card_a, card_b, suit)] = current_val
+                        print(hands_order_2p[(card_a, card_b, suit)])
+                        clear_ranges(window=window)
+                    previous_val = current_val
+
     except Exception as e:
         print("-I- caught exception exiting gracefully...")
         print(e)
         pickle.dump(hands_order_2p, open(path, "wb"))
+        exit()
+    pickle.dump(hands_order_2p, open(path, "wb"))
 
 
-def print_pickle_dict(dic):
+def define_order_ranges(window, hands_order_dic, iter):
+    click_position(window=window, position='CO')
+    time.sleep(0.5)
+    range_window = find_equity_lab_window('CO')
+    range_top_x, range_top_y, range_low_x, range_low_y = win32gui.GetWindowRect(range_window)
+
+    pyautogui.click(range_top_x + 630, range_top_y + 475)   #  create folder
+    time.sleep(0.1)
+
+    string = "Iter_"+str(iter)
+    for c in str(string):
+        pyautogui.press(c)
+        time.sleep(0.01)
+    pyautogui.press('enter')
+
+    comb_counter = 0
+    total_comb = 52 * 51 / 2
+    next_mark = 5
+    for key, val in sorted(hands_order_dic.items(), key=lambda item: item[1], reverse=True):
+        comb_counter += get_comb_num(key[0], key[1], key[2])
+        if comb_counter >= next_mark * (1 / 100) * total_comb:
+            print("=" * 10, next_mark, "percent", "=" * 10)
+            time.sleep(0.1)
+            pyautogui.click(range_top_x + 455, range_top_y + 475)
+            time.sleep(0.1)
+
+            string = "Percent_" + str(next_mark)
+            for c in str(string):
+                pyautogui.press(c)
+                time.sleep(0.01)
+            pyautogui.press('enter')
+            next_mark += 5
+        print(key, ":", val)
+        insert_hand(window=window, position='CO', card_a=key[0], card_b=key[1], suited=key[2], press_ok=False)
+        time.sleep(0.01)
+
+
+def print_sorted_hand_dict(dic):
+    comb_counter = 0
+    total_comb = 52*51/2
+    next_mark = 5
+    for key, val in sorted(dic.items(), key=lambda item: item[1]):
+        comb_counter += get_comb_num(key[0], key[1], key[2])
+        if comb_counter >= next_mark*(1/100)*total_comb:
+            print("="*10, next_mark, "percent", "="*10)
+            next_mark += 5
+        print(key, ":", val)
+
+
+def print_pickle_dic(dic):
     for key, val in dic.items():
         print(key, ":", val)
+
+
+def get_comb_num(hand_a, hand_b, suit):
+    if hand_a == hand_b:
+        return 6
+    if suit:
+        return 4
+    return 12
 
 
 def txt_pickle_dict(dic, name):
@@ -195,11 +277,21 @@ def txt_pickle_dict(dic, name):
     file.close()
 
 
+
 equilab_window = find_equity_lab_window("Equilab")
 front_ground_window(equilab_window)
 clear_ranges(equilab_window)
 
 
-order_hands(window=equilab_window, vs_range=30, vs_players=2)
+order_hands(window=equilab_window, vs_range=30, vs_players=1, iteration=9)
+exit()
+
+hands_order_2p = pickle.load(open("hands_order_1p_30r_9i.pickle", "rb"))
+#print_pickle_dic(hands_order_2p)
+
+define_order_ranges(window=equilab_window, iter=9, hands_order_dic=hands_order_2p)
 
 
+exit()
+
+print_sorted_hand_dict(hands_order_2p)
